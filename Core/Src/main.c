@@ -90,10 +90,10 @@ WorkMode work_mode=MODE_IDLE;
 Motor_Status motor={0};
 
 int32_t target_pos=0;
-//uint8_t can_tx_data[8];
 
 uint8_t uart_rx_buf[UART_BUF_SIZE];
 uint8_t uart_cmd_buf[UART_CMD_MAX_LEN];
+uint8_t uart_buf[64];
 volatile uint8_t uart_cmd_ready = 0;
 
 
@@ -365,14 +365,27 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	if(htim==&htim4)
 	{
 		//发�?�状态数�?
-		uint8_t uart_buf[64];
+		//发�?�有乱码 读写�?
+		
+		HAL_CAN_DeactivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+		
+//		_snprintf((char*)uart_buf,sizeof(uart_buf),
+//			"Pos:%ld Current:%ld Target:%ldmode:%s\r\n",
+//			motor.total_angle,
+//			motor.torque_current,
+//			target_pos,
+//			WorkMode_To_Str(work_mode));
+		//用于数据分析
+		uint8_t frame_start[] = {0xAA};
+		HAL_UART_Transmit(&huart3, frame_start, sizeof(frame_start), 100);
 		_snprintf((char*)uart_buf,sizeof(uart_buf),
-			"Pos:%ld L:%ld R:%ld mode:%s\r\n",
+			"%d,%d,%d,%d\r\n",
 			motor.total_angle,
-			motor.left_limit,
-			motor.right_limit,
-			WorkMode_To_Str(work_mode));
-		HAL_UART_Transmit(&huart3,uart_buf,strlen((char*)uart_buf),10);
+			(int32_t)motor.torque_current,
+			target_pos,(int32_t)0);
+		HAL_UART_Transmit_IT(&huart3,uart_buf,strlen((char*)uart_buf));
+		
+		HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
 	}
 }
 
@@ -410,11 +423,11 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart,uint16_t size)
             memcpy(uart_cmd_buf, start, len);
             uart_cmd_buf[len] = '\0';
             
-            // 处理下一条指令
+            // 处理下一条指�?
             start = end + 1;
             end = strchr(start, '\n');
         }
-		HAL_UART_Transmit_DMA(&huart3,uart_cmd_buf,sizeof(uart_cmd_buf));
+//		HAL_UART_Transmit_DMA(&huart3,uart_cmd_buf,sizeof(uart_cmd_buf));
         HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_15);
 		Process_UART_Command(uart_cmd_buf);
         // 重启DMA接收
